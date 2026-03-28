@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-VER=3.1.3
+VER=3.1.3-T1
 
 PROJECT_NAME="acme.sh"
 
@@ -2303,12 +2303,13 @@ _send_signed_request() {
         if [ -z "$_sleep_overload_retry_sec" ]; then
           _sleep_overload_retry_sec=5
         fi
-        if [ $_sleep_overload_retry_sec -le 600 ]; then
-          _info "It seems the CA server is currently overloaded, let's wait and retry. Sleeping for $_sleep_overload_retry_sec seconds."
-          _sleep $_sleep_overload_retry_sec
+        # Trustico® patch (T1): raise Retry-After limit from 600s to 86400s for DNS-01 validation compatibility.
+        if [ $_sleep_overload_retry_sec -le ${LE_MAX_RETRY_AFTER:-86400} ]; then
+          _info "It seems the CA server is currently overloaded, let's wait and retry. Sleeping for ${LE_RETRY_SLEEP:-30} seconds."
+          _sleep ${LE_RETRY_SLEEP:-30}
           continue
         else
-          _info "The retryafter=$_retryafter value is too large (> 600), will not retry anymore."
+          _info "The retryafter=$_retryafter value is too large (> ${LE_MAX_RETRY_AFTER:-86400}), will not retry anymore."
         fi
       fi
       if _contains "$_body" "JWS has invalid anti-replay nonce" || _contains "$_body" "JWS has an invalid anti-replay nonce"; then
@@ -5230,10 +5231,11 @@ $_authorizations_map"
       _retryafter=$(echo "$responseHeaders" | grep -i "^Retry-After *: *[0-9]\+ *" | cut -d : -f 2 | tr -d ' ' | tr -d '\r')
       _sleep_overload_retry_sec=$_retryafter
       if [ "$_sleep_overload_retry_sec" ]; then
-        if [ $_sleep_overload_retry_sec -le 600 ]; then
-          _sleep $_sleep_overload_retry_sec
+        # Trustico® patch (T1): raise Retry-After limit from 600s to 86400s for DNS-01 validation compatibility.
+        if [ $_sleep_overload_retry_sec -le ${LE_MAX_RETRY_AFTER:-86400} ]; then
+          if [ "$waittimes" -le 20 ]; then _sleep ${LE_RETRY_SLEEP:-30}; else _sleep ${LE_RETRY_SLEEP_LONG:-600}; fi
         else
-          _info "The retryafter=$_retryafter value is too large (> 600), will not retry anymore."
+          _info "The retryafter=$_retryafter value is too large (> ${LE_MAX_RETRY_AFTER:-86400}), will not retry anymore."
           _clearupwebbroot "$_currentRoot" "$removelevel" "$token"
           _clearup
           _on_issue_err "$_post_hook" "$vlist"
