@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-VER=3.1.3-T2
+VER=3.1.3-T3
 
 PROJECT_NAME="acme.sh"
 
@@ -5151,9 +5151,6 @@ $_authorizations_map"
       MAX_RETRY_TIMES=30
     fi
 
-    # Trustico® patch (T2): track last challenge trigger time for periodic re-trigger.
-    _last_trigger_time=$(_time)
-
     _debug "Let's check the authz status"
     while true; do
       waittimes=$(_math "$waittimes" + 1)
@@ -5234,9 +5231,11 @@ $_authorizations_map"
       _retryafter=$(echo "$responseHeaders" | grep -i "^Retry-After *: *[0-9]\+ *" | cut -d : -f 2 | tr -d ' ' | tr -d '\r')
       _sleep_overload_retry_sec=$_retryafter
       if [ "$_sleep_overload_retry_sec" ]; then
-        # Trustico® patch (T1): raise Retry-After limit from 600s to 86400s for DNS-01 validation compatibility.
+        # Trustico® patch (T3): raise Retry-After limit from 600s to 86400s for DNS-01 validation compatibility.
+        # Poll every 1 min for first 10 mins, every 5 min for next 30 mins, every 10 min after that.
+        # Sleep values are 58/298/598 because the 2-second base sleep on line 5222 runs first.
         if [ $_sleep_overload_retry_sec -le ${LE_MAX_RETRY_AFTER:-86400} ]; then
-          if [ "$waittimes" -le 20 ]; then _sleep ${LE_RETRY_SLEEP:-30}; else _sleep ${LE_RETRY_SLEEP_LONG:-600}; fi
+          if [ "$waittimes" -le 10 ]; then _sleep 58; elif [ "$waittimes" -le 16 ]; then _sleep 298; else _sleep 598; fi
         else
           _info "The retryafter=$_retryafter value is too large (> ${LE_MAX_RETRY_AFTER:-86400}), will not retry anymore."
           _clearupwebbroot "$_currentRoot" "$removelevel" "$token"
@@ -5245,17 +5244,15 @@ $_authorizations_map"
           return 1
         fi
       fi
-      # Trustico® patch (T2): periodically re-trigger the challenge to request
-      # the CA to retry DNS/HTTP validation. Some CAs (e.g. Sectigo) attempt
-      # validation once on initial trigger and do not automatically retry.
-      # Re-posting {} to the challenge URL is permitted by RFC 8555 and asks
-      # the CA to check again. Interval: 660 seconds (11 minutes).
-      _now_trigger=$(_time)
-      _trigger_elapsed=$(_math "$_now_trigger" - "$_last_trigger_time")
-      if [ "$_trigger_elapsed" -ge 660 ]; then
+      # Trustico® patch (T3): re-trigger challenge validation after the initial
+      # DNS propagation window. Some CAs (e.g. Sectigo) attempt validation once
+      # on initial trigger and do not automatically retry. Re-posting {} to the
+      # challenge URL is permitted by RFC 8555 and asks the CA to check again.
+      # Skip first 10 polls (10 minutes) to allow DNS propagation, then
+      # re-trigger on every subsequent poll.
+      if [ "$waittimes" -gt 10 ]; then
         _info "Re-triggering challenge validation for $d"
         _send_signed_request "$uri" "{}"
-        _last_trigger_time=$(_time)
       fi
     done
 
