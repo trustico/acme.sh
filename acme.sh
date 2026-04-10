@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-VER=3.1.3-T1
+VER=3.1.3-T2
 
 PROJECT_NAME="acme.sh"
 
@@ -5151,6 +5151,9 @@ $_authorizations_map"
       MAX_RETRY_TIMES=30
     fi
 
+    # Trustico® patch (T2): track last challenge trigger time for periodic re-trigger.
+    _last_trigger_time=$(_time)
+
     _debug "Let's check the authz status"
     while true; do
       waittimes=$(_math "$waittimes" + 1)
@@ -5241,6 +5244,18 @@ $_authorizations_map"
           _on_issue_err "$_post_hook" "$vlist"
           return 1
         fi
+      fi
+      # Trustico® patch (T2): periodically re-trigger the challenge to request
+      # the CA to retry DNS/HTTP validation. Some CAs (e.g. Sectigo) attempt
+      # validation once on initial trigger and do not automatically retry.
+      # Re-posting {} to the challenge URL is permitted by RFC 8555 and asks
+      # the CA to check again. Interval: 660 seconds (11 minutes).
+      _now_trigger=$(_time)
+      _trigger_elapsed=$(_math "$_now_trigger" - "$_last_trigger_time")
+      if [ "$_trigger_elapsed" -ge 660 ]; then
+        _info "Re-triggering challenge validation for $d"
+        _send_signed_request "$uri" "{}"
+        _last_trigger_time=$(_time)
       fi
     done
 
