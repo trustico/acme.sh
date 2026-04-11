@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 
-VER=3.1.3-T3
+VER=3.1.3-T4
 
 PROJECT_NAME="acme.sh"
 
 PROJECT_ENTRY="acme.sh"
 
-PROJECT="https://github.com/acmesh-official/$PROJECT_NAME"
+PROJECT="https://www.trustico.com"
 
 DEFAULT_INSTALL_HOME="$HOME/.$PROJECT_NAME"
 
@@ -34,22 +34,14 @@ CA_GOOGLE_TEST="https://dv.acme-v02.test-api.pki.goog/directory"
 
 CA_ACTALIS="https://acme-api.actalis.com/acme/directory"
 
-DEFAULT_CA=$CA_ZEROSSL
-DEFAULT_STAGING_CA=$CA_LETSENCRYPT_V2_TEST
+DEFAULT_CA=
+DEFAULT_STAGING_CA=
 
-CA_NAMES="
-ZeroSSL.com,zerossl
-LetsEncrypt.org,letsencrypt
-LetsEncrypt.org_test,letsencrypt_test,letsencrypttest
-SSL.com,sslcom
-Google.com,google
-Google.com_test,googletest,google_test
-Actalis.com,actalis.com,actalis
-"
+CA_NAMES=""
 
-CA_SERVERS="$CA_ZEROSSL,$CA_LETSENCRYPT_V2,$CA_LETSENCRYPT_V2_TEST,$CA_SSLCOM_RSA,$CA_GOOGLE,$CA_GOOGLE_TEST,$CA_ACTALIS"
+CA_SERVERS=""
 
-DEFAULT_USER_AGENT="$PROJECT_NAME/$VER ($PROJECT)"
+DEFAULT_USER_AGENT="Trustico-CP-CaaS/$VER (https://www.trustico.com)"
 
 DEFAULT_ACCOUNT_KEY_LENGTH=ec-256
 DEFAULT_DOMAIN_KEY_LENGTH=ec-256
