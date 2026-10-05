@@ -1,0 +1,138 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Full history so the base branch is present and the review can
+          # diff the branch against it.
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # NO use_sticky_comment AND NO track_progress, deliberately.
+          #
+          # Each push is a review of DIFFERENT code and gets its own
+          # comment. That is wanted : the per-round history stays readable
+          # and nothing overwrites anything.
+          #
+          # Both settings were tried and both were removed. Together they
+          # hand comment ownership to the action, which then posts a
+          # progress notice and a job link and NO REVIEW at all, while the
+          # check still reports success. Review volume is controlled by the
+          # noise rules in the prompt below, not by collapsing comments.
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            BASE BRANCH: ${{ github.event.pull_request.base.ref }}
+
+            The PR branch is already checked out in the working directory.
+            Review the changes this pull request makes to its base branch.
+
+            SCOPE : report findings ONLY on lines this pull request adds,
+            modifies, or REMOVES. A deletion is in scope : if this pull
+            request removes a guard clause, a validation check, an await or
+            a test, say so. You may read any file in the repository for
+            context, but a problem that is real and PRE-EXISTING is out of
+            scope, however poor it looks. Reading a file to understand a
+            caller does not put that file in scope.
+
+            Please review this pull request and provide feedback on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Performance considerations
+            - Security concerns
+            - Test coverage
+
+            Be constructive and helpful in your feedback.
+
+            Report only NOTEWORTHY feedback. Something is noteworthy when a
+            reasonable engineer would change the code because of it. Do not
+            pad the review to appear thorough : a short review, or one with
+            nothing to report, is a good outcome and is what a clean change
+            should produce.
+
+            Specifically, do NOT report:
+            - Style, formatting, or import ordering.
+            - Anything the linter or type checker already enforces.
+            - The wording or phrasing of source comments and JSDoc, unless a
+              comment states something about runtime behaviour that is false.
+            - Suggestions you cannot tie to a concrete case, or that you
+              cannot state a specific replacement for.
+
+            This pull request may have been reviewed before. Read ALL of
+            your own previous reviews on it, oldest first, BEFORE writing
+            anything :
+
+              gh pr view <number> --json comments
+
+            They are the comments whose body STARTS WITH the exact marker
+            line `## Claude Review`. Match on that marker, NOT on the
+            comment author : the same bot account also posts non-review
+            notices, and matching by author reads the wrong comment.
+
+            ALL of them, not just the latest. Each push adds a comment and
+            none are overwritten, so round 7 that reads only round 6 will
+            re-raise everything from rounds 1 to 5.
+
+            You are NOT updating those comments : you are adding a new one,
+            and the earlier ones stay. Do not raise anything you have
+            already raised, and do not raise anything the author has already
+            addressed. Report what is new or what genuinely remains.
+
+            Post your review as a single comment using `gh pr comment`.
+
+            THE FIRST LINE OF THAT COMMENT MUST BE EXACTLY THE FOLLOWING
+            LINE, WITH NO LEADING WHITESPACE:
+
+            ## Claude Review
+
+            That marker is the only thing that lets the next run find this
+            review, and it is matched as an exact prefix. Leading spaces
+            still render as a heading in GitHub, so a comment that starts
+            with `  ## Claude Review` LOOKS correct while failing the match
+            silently : the next review then finds no prior review and
+            re-raises everything. No indentation.
+
+            END YOUR REVIEW WITH A PLAIN-ENGLISH MERGE RECOMMENDATION, on its
+            own line, as the last thing in the comment. Either:
+
+              There are outstanding issues to address before merging.
+
+            or:
+
+              No outstanding issues. This pull request is ready to merge.
+
+            Say the second one whenever nothing remains that you would change
+            the code for. Optional suggestions you have chosen to mention do
+            not make a pull request unready ; if you would merge it, say so.
+
+            But if your review NAMES ANY CHANGE you would make to this pull
+            request, the FIRST line is the correct one. The second line is
+            only for a review that names none. A review that describes a fix
+            and then says "ready to merge" is wrong, and the merge line is
+            the one line an operator reads to decide.
+          claude_args: |
+            --model opus
+            --max-turns 75
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Read,Glob,Grep,GlobTool,GrepTool"
